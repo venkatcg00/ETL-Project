@@ -47,6 +47,19 @@ def execute_sql_script(engine, script_path):
         print(f"An error occured while executing sript {script_path}: {e}")
 
 
+def check_and_create_directory(directory_path):
+    """
+    Check if a directory exists and create it if it does not.
+    
+    :param directory_path: Path to the directory
+    """
+    if not os.path.exists(directory_path):
+        try:
+            os.makedirs(directory_path)
+        except OSError as e:
+            print(f"An error occurred while creating the directory: {e}")
+
+
 def main():
     # Get the directory where the current Python script is located
     current_directory = os.path.dirname(os.path.abspath(__file__))
@@ -58,21 +71,22 @@ def main():
     parameter_file_path = os.path.join(project_directory, 'Setup', 'Parameters.ini')
     
     # Read the parameter file
-    parameters = read_config(parameter_file_path)
+    config = configparser.ConfigParser()
+    config.read(parameter_file_path)
 
-    db_path = parameters['db_path']
-    db_name = parameters['db_name']
-    ddl_script = parameters['ddl_script']
-    dml_script = parameters['dml_script']
+    # Check and create db_path if it does not exist
+    check_and_create_directory(config.get('PATH','DB_PATH'))
+
+    db_path_name = config.get('PATH','DB_PATH') + config.get('DATABASE', 'DB_NAME')
 
     # Creat the SQLAlchemy engine
-    engine = create_engine(f'sqlite:///{db_path}/{db_name}')
+    engine = create_engine(f'sqlite:///{db_path_name}')
 
     # Execute the DDL Script
-    execute_sql_script(engine, ddl_script)
+    execute_sql_script(engine, config.get('PATH', 'DDL_SCRIPT'))
 
     # Execute the DML Script
-    execute_sql_script(engine, dml_script)
+    execute_sql_script(engine, config.get('PATH', 'DML_SCRIPT'))
 
 if __name__ == "__main__":
     main()

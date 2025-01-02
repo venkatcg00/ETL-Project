@@ -16,16 +16,16 @@ config = configparser.ConfigParser()
 
 
 # Add a section and parameters to the configuration
-config.add_section('PATHS')
-config.set('PATHS', 'CSV_FOLDER', repo_path + 'Data/CSV_Files/')
-config.set('PATHS', 'DML_SCRIPT', repo_path + 'Setup/DML_Script.sql')
-config.set('PATHS', 'DDL_SCRIPT', repo_path + 'Setup/DDL_Script.sql')
+config.add_section('PATH')
+config.set('PATH', 'CSV_FOLDER', repo_path + 'Data/CSV_Files/')
+config.set('PATH', 'DML_SCRIPT', repo_path + 'Setup/DML_Script.sql')
+config.set('PATH', 'DDL_SCRIPT', repo_path + 'Setup/DDL_Script.sql')
+config.set('PATH', 'DB_PATH', repo_path + 'Data/Untracked/')
 
 
 # Add a new section for database details
 config.add_section('DATABASE')
-config.set('DATABASE', 'DB_NAME', 'CSV_DATABASE')
-config.set('DATABASE', 'DB_PATH', repo_path + 'Data/Untracked/')
+config.set('DATABASE', 'DB_NAME', 'CSD_DATABASE')
 
 
 # Path to the new configuration file
