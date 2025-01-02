@@ -1,0 +1,56 @@
+# Data manipulations and analysis
+pandas==2.1.1
+
+# Database interactions and ORM
+sqlalchemy==2.0.21
+
+# File Monitoring
+watchdog==3.0.0
+
+# Logging
+loguru==0.7.0
+
+# Kafka Integration
+confluent-Kafka==2.2.0
+
+# Parquet file handling
+pyarrow==13.0.0
+
+# Flask framework for webapp
+flask==3.0.0
+flask-caching==2.0.1
+
+# Testing
+pytest==7.4.0
+
+# HTTP requests
+request==2.31.0
+
+# PEP8 and code formatting
+flake8==6.1.0
+black==23.9.1
+
+# NoSQL database
+tinydb==4.8.1
+
+# Pyspark for distributed data processing
+pyspark==3.5.0
+
+# File streaming utilities
+streamz==0.6.5
+
+# Visualization Framework
+streamlit==1.25.0
+
+# File system abstraction (Simulating S3 for CSV)
+fsspec==2023.10.0
+s3fs==2023.10.0
+
+# Apache Airflow for orchestration
+apache-airflow==2.7.2
+
+# Data validation
+pydantic==2.5.2
+
+# Task Scheduling
+APScheduler==3.10.1

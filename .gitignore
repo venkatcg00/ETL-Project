@@ -1,3 +1,8 @@
+# Untracked Project Files
+Parameters.ini
+CSV_DATABASE
+Untracked/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
