@@ -106,7 +106,7 @@ def generate_and_update_records(
     records  = []
     record_id = start_record_id
 
-    for i in range(num_records):
+    for i in range(int(num_records)):
         record_id = record_id + 1
         new_record = generate_random_record(record_id, support_categories, agent_pseudo_names, customer_types)
 
@@ -179,7 +179,7 @@ def main() -> None:
     check_and_create_directory(config.get('PATH','CSV_FOLDER'))
 
     # Connect to the database
-    engine, sessionmaker = connect_to_database(config.get('PATH','DB_PATH'), config.get('DATABASE', 'DB_NAME'))
+    engine, sessionmaker = connect_to_database(config.get('PATH','SQLITE3_DB_PATH'), config.get('DATABASE', 'SQLITE3_DB_NAME'))
 
     # Fetch allowed values from the database
     support_categories: List[str] = fetch_allowed_values(sessionmaker, "CSD_SUPPORT_AREAS", "'AT&T'", "SUPPORT_AREA_NAME")
@@ -214,9 +214,6 @@ def main() -> None:
 
     # Get the latest CSV file generated
     csv_file_path = get_latest_csv_file(csv_folder_path)
-
-    # Update max_record_id for the next iteration
-    max_record_id = get_max_record_id(csv_file_path, 'TICKET_IDENTIFIER')
 
 if __name__ == "__main__":
     main()

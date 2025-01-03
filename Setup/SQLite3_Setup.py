@@ -3,30 +3,6 @@ import configparser
 import os
 
 
-def read_config(config_file):
-    """
-    Read the configuration file.
-
-    :param config_file: Path to the configuration file
-    :return: Dictionary with configuration parameters
-    """
-    
-    config = configparser.ConfigParser()
-    config.read(config_file)
-
-    db_path = config.get('DATABASE', 'DB_PATH')
-    db_name = config.get('DATABASE', 'DB_NAME')
-    ddl_script = config.get('PATHS', 'DDL_SCRIPT')
-    dml_script = config.get('PATHS', 'DML_SCRIPT')
-
-    return {
-        'db_path' : db_path,
-        'db_name' : db_name,
-        'ddl_script' : ddl_script,
-        'dml_script' : dml_script
-    }
-
-
 def execute_sql_script(engine, script_path):
     """
     Execute a SQL script from a file using SQLAlchemy.
@@ -75,18 +51,18 @@ def main():
     config.read(parameter_file_path)
 
     # Check and create db_path if it does not exist
-    check_and_create_directory(config.get('PATH','DB_PATH'))
+    check_and_create_directory(config.get('PATH','SQLITE3_DB_PATH'))
 
-    db_path_name = config.get('PATH','DB_PATH') + config.get('DATABASE', 'DB_NAME')
+    db_path_name = config.get('PATH','SQLITE3_DB_PATH') + config.get('DATABASE', 'SQLITE3_DB_NAME')
 
     # Creat the SQLAlchemy engine
     engine = create_engine(f'sqlite:///{db_path_name}')
 
     # Execute the DDL Script
-    execute_sql_script(engine, config.get('PATH', 'DDL_SCRIPT'))
+    execute_sql_script(engine, config.get('PATH', 'SQLITE3_DDL_SCRIPT'))
 
     # Execute the DML Script
-    execute_sql_script(engine, config.get('PATH', 'DML_SCRIPT'))
+    execute_sql_script(engine, config.get('PATH', 'SQLITE3_DML_SCRIPT'))
 
 if __name__ == "__main__":
     main()

@@ -18,14 +18,16 @@ config = configparser.ConfigParser()
 # Add a section and parameters to the configuration
 config.add_section('PATH')
 config.set('PATH', 'CSV_FOLDER', repo_path + 'Data/CSV_Files/')
-config.set('PATH', 'DML_SCRIPT', repo_path + 'Setup/DML_Script.sql')
-config.set('PATH', 'DDL_SCRIPT', repo_path + 'Setup/DDL_Script.sql')
-config.set('PATH', 'DB_PATH', repo_path + 'Data/Untracked/')
+config.set('PATH', 'SQLITE3_DML_SCRIPT', repo_path + 'Setup/SQLite3_DML_Script.sql')
+config.set('PATH', 'SQLITE3_DDL_SCRIPT', repo_path + 'Setup/SQLite3_DDL_Script.sql')
+config.set('PATH', 'SQLITE3_DB_PATH', repo_path + 'Data/Untracked/')
+config.set('PATH', 'TINYDB_PATH', repo_path + 'Data/Untracked/')
 
 
 # Add a new section for database details
 config.add_section('DATABASE')
-config.set('DATABASE', 'DB_NAME', 'CSD_DATABASE')
+config.set('DATABASE', 'SQLITE3_DB_NAME', 'CSD_DATABASE')
+config.set('DATABASE', 'TINYDB_NAME', 'PARQUET_STORAGE')
 
 
 # Path to the new configuration file

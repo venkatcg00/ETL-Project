@@ -2,6 +2,7 @@
 Parameters.ini
 CSD_DATABASE
 CSV_data*.csv
+PARQUET_STORAGE.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
