@@ -8,9 +8,7 @@ flask
 flask-caching
 pytest
 requests
-flake8
-black
-tinydb
+pickledb
 pyspark
 streamz
 streamlit
