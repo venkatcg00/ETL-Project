@@ -2,7 +2,6 @@ pandas
 sqlalchemy
 watchdog
 loguru
-confluent-kafka
 pyarrow
 flask
 flask-caching

@@ -3,6 +3,7 @@ Parameters.ini
 SQL_DATABASE
 NO_SQL_DATABASE
 CSV_data*.csv
+XML_STORAGE
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

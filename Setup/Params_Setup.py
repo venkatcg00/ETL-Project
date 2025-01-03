@@ -22,6 +22,7 @@ config.set("PATH", "SQL_DML_SCRIPT", repo_path + "Setup/SQL_DML_Script.sql")
 config.set("PATH", "SQL_DDL_SCRIPT", repo_path + "Setup/SQL_DDL_Script.sql")
 config.set("PATH", "SQL_DB_PATH", repo_path + "Data/Untracked/")
 config.set("PATH", "NO_SQL_DB_PATH", repo_path + "Data/Untracked/")
+config.set("PATH", "XML_STORAGE", repo_path + "Data/Untracked/XML_STORAGE")
 
 
 # Add a new section for database details
