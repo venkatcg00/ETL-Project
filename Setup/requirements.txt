@@ -18,3 +18,5 @@ APScheduler
 boto3
 alembic
 cryptography
+fastapi
+uvicorn

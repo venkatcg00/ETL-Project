@@ -4,6 +4,8 @@ SQL_DATABASE
 NO_SQL_DATABASE
 CSV_data*.csv
 XML_STORAGE
+incremental_id.json
+XML_RECORD_*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

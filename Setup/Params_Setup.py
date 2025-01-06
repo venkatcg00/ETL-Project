@@ -30,6 +30,13 @@ config.add_section("DATABASE")
 config.set("DATABASE", "SQL_DB_NAME", "SQL_DATABASE")
 config.set("DATABASE", "NO_SQL_DB_NAME", "NO_SQL_DATABASE")
 
+# Add a new section for API details
+config.add_section("API")
+config.set("API", "HOSTNAME", "127.0.0.1")
+config.set("API", "PORT", "8000")
+config.set("API", "HIGHEST_RECORD_ID", "highest_record_id")
+config.set("API", "ADD", "add")
+
 
 # Path to the new configuration file
 config_file_path = repo_path + "Setup/Parameters.ini"
