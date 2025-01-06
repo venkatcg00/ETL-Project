@@ -20,3 +20,5 @@ alembic
 cryptography
 fastapi
 uvicorn
+dagster
+dagit
