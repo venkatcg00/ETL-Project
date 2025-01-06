@@ -169,10 +169,8 @@ def main() -> None:
 
     host_name = config.get('API', 'HOSTNAME')
     port = config.get('API', 'PORT')
-    highest_record_id = config.get('API', 'HIGHEST_RECORD_ID')
-    add = config.get('API', 'ADD')
-    api_link_highest_record = f"http://{host_name}:{port}/{highest_record_id}"
-    api_link_add = f"http://{host_name}:{port}/{add}"
+    api_link_highest_record = f"http://{host_name}:{port}/highest_record_id"
+    api_link_add = f"http://{host_name}:{port}/add"
 
     max_record_id: int = get_highest_record_id(api_link_highest_record)
 
