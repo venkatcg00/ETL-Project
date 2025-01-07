@@ -12,6 +12,7 @@ from datetime import datetime
 # Create the app
 app = FastAPI()
 
+
 # Storage configuration
 def check_and_create_directory(directory_path):
     """
@@ -24,6 +25,7 @@ def check_and_create_directory(directory_path):
             os.makedirs(directory_path)
         except OSError as e:
             print(f"An error occurred while creating the directory: {e}")
+
 
 # Get the directory where the current Python script is located
 current_directory = os.path.dirname(os.path.abspath(__file__))
@@ -38,51 +40,58 @@ parameter_file_path = os.path.join(project_directory, "Setup", "Parameters.ini")
 config = configparser.ConfigParser()
 config.read(parameter_file_path)
 
-DATA_FOLDER = config.get('PATH', 'XML_STORAGE')
+DATA_FOLDER = config.get("PATH", "XML_STORAGE")
 ID_FILE = Path(DATA_FOLDER) / "incremental_id.json"
 MAX_RECORDS = 5000
 check_and_create_directory(DATA_FOLDER)
 
 # Ensure the ID file exists
 if not Path(ID_FILE).exists():
-    with open(ID_FILE, 'w') as f:
+    with open(ID_FILE, "w") as f:
         json.dump({"incremental_id": 0}, f)
+
 
 # Helper function to load the current incremental ID
 def load_incremental_id():
-    with open(ID_FILE, 'r') as f:
+    with open(ID_FILE, "r") as f:
         return json.load(f)["incremental_id"]
+
 
 # Helper function to save the current incremental ID
 def save_incremental_id(value):
-    with open(ID_FILE, 'w') as f:
+    with open(ID_FILE, "w") as f:
         json.dump({"incremental_id": value}, f)
+
 
 # Initialize incremental id
 incremental_id = load_incremental_id()
 highest_record_id = None  # Initialize highest_record_id
+
 
 # Data model
 class Record(BaseModel):
     id: str  # Provided by the sender
     data: str  # XML data as a string
 
+
 # Helper function to load all records
 def load_records():
     files = sorted(Path(DATA_FOLDER).glob("*.json"), key=os.path.getmtime)
     records = []
     for file in files:
-        with open(file, 'r') as f:
+        with open(file, "r") as f:
             records.append(json.load(f))
     return records
+
 
 # Helper function to save a record
 def save_record(increment_id: int, record: Record):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_name = f'XML_RECORD_{increment_id}_{timestamp}.json'
+    file_name = f"XML_RECORD_{increment_id}_{timestamp}.json"
     record_file = Path(DATA_FOLDER) / file_name
-    with open(record_file, 'w') as f:
+    with open(record_file, "w") as f:
         json.dump({"increment_id": increment_id, **record.dict()}, f)
+
 
 # Helper function to maintain record limit
 def maintain_limit():
@@ -91,9 +100,11 @@ def maintain_limit():
         os.remove(files[0])
         files.pop(0)
 
+
 @app.get("/")
 async def root():
     return {"message": "Streaming API is running!"}
+
 
 @app.post("/add")
 async def add_record(request: Request):
@@ -107,7 +118,7 @@ async def add_record(request: Request):
         body = await request.body()
         root = ET.fromstring(body)
         record_id = root.find("SUPPORT_IDENTIFIER").text
-        record_data = ET.tostring(root, encoding='unicode')
+        record_data = ET.tostring(root, encoding="unicode")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid XML data: {e}")
 
@@ -127,6 +138,7 @@ async def add_record(request: Request):
     maintain_limit()
     return {"message": "Record added successfully.", "increment_id": incremental_id}
 
+
 @app.get("/get", response_model=List[dict])
 async def get_records():
     """
@@ -134,6 +146,7 @@ async def get_records():
     """
     records = load_records()
     return records
+
 
 @app.get("/get/{incremental_id}", response_model=dict)
 async def get_record(increment_id: int):
@@ -145,9 +158,10 @@ async def get_record(increment_id: int):
     if not matching_files:
         raise HTTPException(status_code=404, detail="Record not found.")
 
-    with open(matching_files[0], 'r') as f:
+    with open(matching_files[0], "r") as f:
         record = json.load(f)
     return record
+
 
 @app.delete("/delete/{incremental_id}")
 async def delete_record(increment_id: int):
@@ -163,12 +177,14 @@ async def delete_record(increment_id: int):
         os.remove(file)
     return {"message": "Record deleted successfully."}
 
+
 @app.get("/highest_increment_id")
 async def get_highest_increment_id():
     """
     Return the current highest incremental ID.
     """
     return {"highest_increment_id": incremental_id}
+
 
 @app.get("/highest_record_id")
 async def get_highest_record_id():
@@ -179,6 +195,7 @@ async def get_highest_record_id():
     if highest_record_id is None:
         return {"highest_record_id": "0"}
     return {"highest_record_id": highest_record_id}
+
 
 if __name__ == "__main__":
     uvicorn.run("Streaming_API_Setup:app", host="127.0.0.1", port=8000, reload=True)

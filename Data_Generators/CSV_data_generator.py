@@ -73,6 +73,8 @@ def generate_random_record(
     Returns:
     List[str]: A list representing the generated record.
     """
+    duration = random.randint(20, 600)
+    work_time = random.randint(10, duration - 10)
 
     return [
         record_id,
@@ -84,8 +86,8 @@ def generate_random_record(
         random.choice(["COMPLETED", "DROPPED", "TRANSFERRED"]),
         random.choice(["CALL", "CHAT"]),
         random.choice(customer_types),
-        random.choice([random.randint(10, 600)]),
-        random.choice([random.randint(10, 600)]),
+        duration,
+        work_time,
         random.choice(
             [
                 "RESOLVED",
