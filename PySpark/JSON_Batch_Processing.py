@@ -11,12 +11,14 @@ from pyspark.sql.functions import (
     udf,
     coalesce,
     row_number,
+    upper,
+    floor,
 )
 from pyspark.sql.window import Window
 import pandas as pd
 from sqlalchemy import create_engine, MetaData, update
 from sqlalchemy.orm import sessionmaker
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType
 from DB_Lookup import (
     connect_to_database,
     return_lookup_value,
@@ -25,6 +27,9 @@ from DB_Lookup import (
 import os
 import configparser
 import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from Setup.NO_SQL_DB_Setup import query_by_id
 
 
 def database_df_maker(db_path, source_id, spark):
@@ -45,46 +50,63 @@ def database_df_maker(db_path, source_id, spark):
         return spark.createDataFrame(pandas_df)
 
 
-def csv_df_maker(file_path: str, spark):
-    csv_schema = StructType(
+def json_df_maker(json_data, spark):
+    value_schema = StructType(
         [
-            StructField("TICKET_IDENTIFIER", IntegerType(), True),
+            StructField("INTERACTION_ID", IntegerType(), True),
             StructField("SUPPORT_CATEGORY", StringType(), True),
-            StructField("AGENT_NAME", StringType(), True),
-            StructField("DATE_OF_CALL", StringType(), True),
-            StructField("CALL_STATUS", StringType(), True),
-            StructField("CALL_TYPE", StringType(), True),
+            StructField("AGENT_PSEUDO_NAME", StringType(), True),
+            StructField("CONTACT_DATE", StringType(), True),
+            StructField("INTERACTION_STATUS", StringType(), True),
+            StructField("INTERACTION_TYPE", StringType(), True),
             StructField("TYPE_OF_CUSTOMER", StringType(), True),
-            StructField("DURATION", IntegerType(), True),
-            StructField("WORK_TIME", IntegerType(), True),
-            StructField("TICKET_STATUS", StringType(), True),
-            StructField("RESOLVED_IN_FIRST_CONTACT", IntegerType(), True),
-            StructField("RESOLUTION_CATEGORY", StringType(), True),
-            StructField("RATING", StringType(), True),
+            StructField("INTERACTION_DURATION", IntegerType(), True),
+            StructField("TOTAL_TIME", IntegerType(), True),
+            StructField("STATUS_OF_CUSTOMER_INCIDENT", StringType(), True),
+            StructField("RESOLVED_IN_FIRST_CONTACT", StringType(), True),
+            StructField("SOLUTION_TYPE", StringType(), True),
+            StructField("RATING", IntegerType(), True),
         ]
     )
 
-    df = spark.read.csv(file_path, header=True, schema=csv_schema, sep="|")
-    # Window specification to get the latest record for each TICKET_IDENTIFIER based on the highest value
-    window_spec = Window.partitionBy("TICKET_IDENTIFIER").orderBy(
-        col("TICKET_IDENTIFIER").desc()
+    schema = StructType(
+        [
+            StructField("key", IntegerType(), True),
+            StructField("value", value_schema, True),
+        ]
+    )
+
+    df = spark.createDataFrame(json_data, schema)
+    value_df = df.select("value.*")
+
+    value_df = value_df.withColumn(
+        "CONTACT_DATE", to_timestamp(col("CONTACT_DATE"), "dd/MM/yyyy HH:mm:ss")
+    )
+
+    # Window specification to get the latest record for each INTERACTION_ID based on the highest value
+    window_spec = Window.partitionBy("INTERACTION_ID").orderBy(
+        col("INTERACTION_ID").desc()
     )
 
     # Add row number to each record within the partition
-    df = df.withColumn("row_num", row_number().over(window_spec))
+    value_df = value_df.withColumn("row_num", row_number().over(window_spec))
 
-    # Filter to get only the latest record for each TICKET_IDENTIFIER
-    df = df.filter(col("row_num") == 1).drop("row_num")
+    # Filter to get only the latest record for each INTERACTION_ID
+    value_df = value_df.filter(col("row_num") == 1).drop("row_num")
 
     # Calculate HASHKEY with null values replaced by "NULL"
-    df = df.withColumn(
+    value_df = value_df.withColumn(
         "HASHKEY",
-        md5(concat_ws("||", *[coalesce(col(c), lit("NULL")) for c in df.columns])),
+        md5(
+            concat_ws("||", *[coalesce(col(c), lit("NULL")) for c in value_df.columns])
+        ),
     )
-    df = df.withColumn(
-        "TICKET_IDENTIFIER", concat(lit("AT&T - "), col("TICKET_IDENTIFIER"))
+
+    value_df = value_df.withColumn(
+        "INTERACTION_ID", concat(lit("AMAZON - "), col("INTERACTION_ID"))
     )
-    return df
+
+    return value_df
 
 
 def get_agent_id(agent_name, db_path):
@@ -94,7 +116,7 @@ def get_agent_id(agent_name, db_path):
     engine, Session = connect_to_database(db_path)
     session = Session()
     agent_id = return_lookup_value(
-        Session, "CSD_AGENTS", "'AT&T'", "AGENT_ID", agent_name, "PSEUDO_CODE"
+        Session, "CSD_AGENTS", "'AMAZON'", "AGENT_ID", agent_name, "PSEUDO_CODE"
     )
     close_database_connection(engine)
     return agent_id
@@ -109,12 +131,12 @@ def get_support_area_id(support_area, db_path):
     support_area_id = return_lookup_value(
         Session,
         "CSD_SUPPORT_AREAS",
-        "'AT&T'",
+        "'AMAZON'",
         "SUPPORT_AREA_ID",
         support_area,
         "SUPPORT_AREA_NAME",
     )
-    close_database_connection(engine)
+    session.close()
     return support_area_id
 
 
@@ -127,16 +149,16 @@ def get_customer_type_id(customer_type, db_path):
     customer_type_id = return_lookup_value(
         Session,
         "CSD_CUSTOMER_TYPES",
-        "'AT&T'",
+        "'AMAZON'",
         "CUSTOMER_TYPE_ID",
         customer_type,
         "CUSTOMER_TYPE_NAME",
     )
-    close_database_connection(engine)
+    session.close()
     return customer_type_id
 
 
-def data_transformer(database_df, csv_df, db_path, source_id, data_load_id):
+def data_transformer(database_df, json_df, db_path, source_id, data_load_id):
     # Register Udfs
     get_agent_id_udf = udf(
         lambda agent_name: get_agent_id(agent_name, db_path), StringType()
@@ -149,9 +171,9 @@ def data_transformer(database_df, csv_df, db_path, source_id, data_load_id):
     )
 
     # Join the CSV data with the existing database data
-    df = csv_df.join(
+    df = json_df.join(
         database_df,
-        csv_df["TICKET_IDENTIFIER"] == database_df["SOURCE_SYSTEM_IDENTIFIER"],
+        json_df["INTERACTION_ID"] == database_df["SOURCE_SYSTEM_IDENTIFIER"],
         "left",
     )
 
@@ -168,30 +190,26 @@ def data_transformer(database_df, csv_df, db_path, source_id, data_load_id):
     # Correct timestamp parsing
     transformed_df = (
         filter_df.withColumn("SOURCE_ID", lit(source_id))
-        .withColumn("SOURCE_SYSTEM_IDENTIFIER", col("TICKET_IDENTIFIER"))
-        .withColumn("AGENT_ID", get_agent_id_udf(col("AGENT_NAME")))
-        .withColumn(
-            "INTERACTION_DATE", to_timestamp(col("DATE_OF_CALL"), "MMddyyyyHHmmss")
-        )
+        .withColumn("SOURCE_SYSTEM_IDENTIFIER", col("INTERACTION_ID"))
+        .withColumn("AGENT_ID", get_agent_id_udf(col("AGENT_PSEUDO_NAME")))
+        .withColumn("INTERACTION_DATE", col("CONTACT_DATE"))
         .withColumn("SUPPORT_AREA_ID", get_support_area_id_udf(col("SUPPORT_CATEGORY")))
-        .withColumn("INTERACTION_STATUS", col("CALL_STATUS"))
-        .withColumn("INTERACTION_TYPE", col("CALL_TYPE"))
+        .withColumn("INTERACTION_STATUS", col("INTERACTION_STATUS"))
+        .withColumn("INTERACTION_TYPE", col("INTERACTION_TYPE"))
         .withColumn(
             "CUSTOMER_TYPE_ID", get_customer_type_id_udf(col("TYPE_OF_CUSTOMER"))
         )
-        .withColumn("HANDLE_TIME", col("DURATION"))
-        .withColumn("WORK_TIME", col("WORK_TIME"))
-        .withColumn("FIRST_CONTACT_RESOLUTION", col("RESOLVED_IN_FIRST_CONTACT"))
-        .withColumn("QUERY_STATUS", col("TICKET_STATUS"))
-        .withColumn("SOLUTION_TYPE", col("RESOLUTION_CATEGORY"))
+        .withColumn("HANDLE_TIME", col("INTERACTION_DURATION"))
+        .withColumn("WORK_TIME", (col("TOTAL_TIME") - col("INTERACTION_DURATION")))
         .withColumn(
-            "CUSTOMER_RATING",
-            when(col("RATING") == "WORST", 1)
-            .when(col("RATING") == "BAD", 2)
-            .when(col("RATING") == "NEUTRAL", 3)
-            .when(col("RATING") == "GOOD", 4)
-            .when(col("RATING") == "BEST", 5),
+            "FIRST_CONTACT_RESOLUTION",
+            when(upper(col("RESOLVED_IN_FIRST_CONTACT")) == lit("YES"), 1)
+            .when(upper(col("RESOLVED_IN_FIRST_CONTACT")) == lit("NO"), 0)
+            .otherwise(None),
         )
+        .withColumn("QUERY_STATUS", col("STATUS_OF_CUSTOMER_INCIDENT"))
+        .withColumn("SOLUTION_TYPE", col("SOLUTION_TYPE"))
+        .withColumn("CUSTOMER_RATING", floor(col("RATING").cast("int") / 2))
         .withColumn("SOURCE_HASH_KEY", col("HASHKEY"))
         .withColumn("ROUTER_GROUP", col("ROUTER_GROUP"))
         .withColumn("HISTORIC_CSD_ID", col("CSD_ID"))
@@ -338,7 +356,7 @@ def upsert_table(dataframe, db_path):
     return total_upsert_count, valid_count, invalid_count
 
 
-def main(file_path, data_load_id):
+def main(record_id, data_load_id):
     # Get the directory where the current Python script is located
     current_directory = os.path.dirname(os.path.abspath(__file__))
 
@@ -361,7 +379,7 @@ def main(file_path, data_load_id):
     engine, sessionmaker = connect_to_database(db_path)
 
     source_id = return_lookup_value(
-        sessionmaker, "CSD_SOURCES", "'AT&T'", "SOURCE_ID", "'AT&T'", "SOURCE_NAME"
+        sessionmaker, "CSD_SOURCES", "'AMAZON'", "SOURCE_ID", "'AMAZON'", "SOURCE_NAME"
     )
 
     if source_id is None:
@@ -371,7 +389,8 @@ def main(file_path, data_load_id):
     close_database_connection(engine)
 
     historic_df = database_df_maker(db_path, source_id, spark)
-    new_df = csv_df_maker(file_path, spark)
+    json_data = query_by_id(int(record_id), "gt")
+    new_df = json_df_maker(json_data, spark)
     transformed_df = data_transformer(
         historic_df, new_df, db_path, source_id, data_load_id
     )
@@ -398,13 +417,13 @@ def main(file_path, data_load_id):
 
 
 if __name__ == "__main__":
-    # For debugging purposes, you can provide the file path and data_load_id as arguments
+    # For debugging purposes, you can provide the record id and data_load_id as arguments
     if len(sys.argv) != 3:
-        print("Usage: python CSV_Batch_Processing.py <file_path> <data_load_id>")
+        print("Usage: python CSV_Batch_Processing.py <record_id> <data_load_id>")
         sys.exit(1)
 
-    file_path = sys.argv[1]
+    record_id = sys.argv[1]
     data_load_id = int(sys.argv[2])
 
-    result = main(file_path, data_load_id)
+    result = main(record_id, data_load_id)
     print(result)
