@@ -11,6 +11,7 @@ from pyspark.sql.functions import (
     udf,
     coalesce,
     row_number,
+    monotonically_increasing_id,
 )
 from pyspark.sql.window import Window
 import pandas as pd
@@ -29,15 +30,15 @@ import sys
 
 def database_df_maker(db_path, source_id, spark):
     engine = create_engine(f"sqlite:///{db_path}")
-    query = f"SELECT CSD_ID, SOURCE_SYSTEM_IDENTIFIER, SOURCE_HASH_KEY FROM CSD_DATA_MART WHERE ACTIVE_FLAG = 1 AND SOURCE_ID = {source_id}"
+    query = f"SELECT CSD_ID AS HISTORIC_CSD_ID, SOURCE_SYSTEM_IDENTIFIER AS HISTORIC_SSI, SOURCE_HASH_KEY AS HISTORIC_HASHKEY FROM CSD_DATA_MART WHERE ACTIVE_FLAG = 1 AND SOURCE_ID = {source_id}"
     pandas_df = pd.read_sql(query, con=engine)
     if pandas_df.empty:
         # Define the schema for the empty DataFrame
         schema = StructType(
             [
-                StructField("CSD_ID", IntegerType(), True),
-                StructField("SOURCE_SYSTEM_IDENTIFIER", StringType(), True),
-                StructField("SOURCE_HASH_KEY", StringType(), True),
+                StructField("HISTORIC_CSD_ID", IntegerType(), True),
+                StructField("HISTORIC_SSI", StringType(), True),
+                StructField("HISTORIC_HASHKEY", StringType(), True),
             ]
         )
         return spark.createDataFrame(spark.sparkContext.emptyRDD(), schema)
@@ -65,9 +66,13 @@ def csv_df_maker(file_path: str, spark):
     )
 
     df = spark.read.csv(file_path, header=True, schema=csv_schema, sep="|")
-    # Window specification to get the latest record for each TICKET_IDENTIFIER based on the highest value
+
+    # Add a row_index column
+    df = df.withColumn("row_index", monotonically_increasing_id())
+
+    # Window specification to get the latest record for each TICKET_IDENTIFIER based on the highest row_index
     window_spec = Window.partitionBy("TICKET_IDENTIFIER").orderBy(
-        col("TICKET_IDENTIFIER").desc()
+        col("row_index").desc()
     )
 
     # Add row number to each record within the partition
@@ -94,7 +99,7 @@ def get_agent_id(agent_name, db_path):
     engine, Session = connect_to_database(db_path)
     session = Session()
     agent_id = return_lookup_value(
-        Session, "CSD_AGENTS", "'AT&T'", "AGENT_ID", agent_name, "PSEUDO_CODE"
+        session, "CSD_AGENTS", "'AT&T'", "AGENT_ID", agent_name, "PSEUDO_CODE"
     )
     close_database_connection(engine)
     return agent_id
@@ -107,7 +112,7 @@ def get_support_area_id(support_area, db_path):
     engine, Session = connect_to_database(db_path)
     session = Session()
     support_area_id = return_lookup_value(
-        Session,
+        session,
         "CSD_SUPPORT_AREAS",
         "'AT&T'",
         "SUPPORT_AREA_ID",
@@ -125,7 +130,7 @@ def get_customer_type_id(customer_type, db_path):
     engine, Session = connect_to_database(db_path)
     session = Session()
     customer_type_id = return_lookup_value(
-        Session,
+        session,
         "CSD_CUSTOMER_TYPES",
         "'AT&T'",
         "CUSTOMER_TYPE_ID",
@@ -151,15 +156,15 @@ def data_transformer(database_df, csv_df, db_path, source_id, data_load_id):
     # Join the CSV data with the existing database data
     df = csv_df.join(
         database_df,
-        csv_df["TICKET_IDENTIFIER"] == database_df["SOURCE_SYSTEM_IDENTIFIER"],
+        csv_df["TICKET_IDENTIFIER"] == database_df["HISTORIC_SSI"],
         "left",
     )
 
     # Determine the router group
     router_df = df.withColumn(
         "ROUTER_GROUP",
-        when(col("SOURCE_HASH_KEY").isNull(), "INSERT")
-        .when(col("HASHKEY") == col("SOURCE_HASH_KEY"), "DUPLICATE")
+        when(col("HISTORIC_HASHKEY").isNull(), "INSERT")
+        .when(col("HASHKEY") == col("HISTORIC_HASHKEY"), "DUPLICATE")
         .otherwise("UPDATE"),
     )
 
@@ -194,7 +199,7 @@ def data_transformer(database_df, csv_df, db_path, source_id, data_load_id):
         )
         .withColumn("SOURCE_HASH_KEY", col("HASHKEY"))
         .withColumn("ROUTER_GROUP", col("ROUTER_GROUP"))
-        .withColumn("HISTORIC_CSD_ID", col("CSD_ID"))
+        .withColumn("HISTORIC_CSD_ID", col("HISTORIC_CSD_ID"))
         .withColumn("DATA_LOAD_ID", lit(data_load_id))
         .withColumn("START_DATE", lit(datetime.now()))
         .withColumn("END_DATE", lit(datetime.strptime("2099-12-31", "%Y-%m-%d")))

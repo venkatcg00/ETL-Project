@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List
@@ -12,19 +13,22 @@ from datetime import datetime
 # Create the app
 app = FastAPI()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 # Storage configuration
 def check_and_create_directory(directory_path):
     """
     Check if a directory exists and create it if it does not.
-
     :param directory_path: Path to the directory
     """
     if not os.path.exists(directory_path):
         try:
             os.makedirs(directory_path)
         except OSError as e:
-            print(f"An error occurred while creating the directory: {e}")
+            logger.error(f"An error occurred while creating the directory: {e}")
 
 
 # Get the directory where the current Python script is located
@@ -42,6 +46,7 @@ config.read(parameter_file_path)
 
 DATA_FOLDER = config.get("PATH", "XML_STORAGE")
 ID_FILE = Path(DATA_FOLDER) / "incremental_id.json"
+HIGHEST_RECORD_ID_FILE = Path(DATA_FOLDER) / "highest_record_id.json"
 MAX_RECORDS = 5000
 check_and_create_directory(DATA_FOLDER)
 
@@ -49,6 +54,11 @@ check_and_create_directory(DATA_FOLDER)
 if not Path(ID_FILE).exists():
     with open(ID_FILE, "w") as f:
         json.dump({"incremental_id": 0}, f)
+
+# Ensure the highest record ID file exists
+if not Path(HIGHEST_RECORD_ID_FILE).exists():
+    with open(HIGHEST_RECORD_ID_FILE, "w") as f:
+        json.dump({"highest_record_id": "0"}, f)
 
 
 # Helper function to load the current incremental ID
@@ -63,9 +73,21 @@ def save_incremental_id(value):
         json.dump({"incremental_id": value}, f)
 
 
-# Initialize incremental id
+# Helper function to load the highest record ID
+def load_highest_record_id():
+    with open(HIGHEST_RECORD_ID_FILE, "r") as f:
+        return json.load(f)["highest_record_id"]
+
+
+# Helper function to save the highest record ID
+def save_highest_record_id(value):
+    with open(HIGHEST_RECORD_ID_FILE, "w") as f:
+        json.dump({"highest_record_id": value}, f)
+
+
+# Initialize incremental id and highest record id
 incremental_id = load_incremental_id()
-highest_record_id = None  # Initialize highest_record_id
+highest_record_id = load_highest_record_id()
 
 
 # Data model
@@ -130,8 +152,10 @@ async def add_record(request: Request):
     save_incremental_id(incremental_id)
 
     # Update highest_record_id
-    if highest_record_id is None or record.id > highest_record_id:
+    if highest_record_id is None or int(record.id) > int(highest_record_id):
         highest_record_id = record.id
+        save_highest_record_id(highest_record_id)
+        logger.info(f"Updated highest_record_id to {highest_record_id}")
 
     # Save the record
     save_record(incremental_id, record)
@@ -148,7 +172,7 @@ async def get_records():
     return records
 
 
-@app.get("/get/{incremental_id}", response_model=dict)
+@app.get("/get/{increment_id}", response_model=dict)
 async def get_record(increment_id: int):
     """
     Retrieve a specific record by API-generated incremental ID.
@@ -163,7 +187,7 @@ async def get_record(increment_id: int):
     return record
 
 
-@app.delete("/delete/{incremental_id}")
+@app.delete("/delete/{increment_id}")
 async def delete_record(increment_id: int):
     """
     Delete a specific record by API-generated incremental ID.
@@ -195,6 +219,32 @@ async def get_highest_record_id():
     if highest_record_id is None:
         return {"highest_record_id": "0"}
     return {"highest_record_id": highest_record_id}
+
+
+@app.get("/get_greater_than/{increment_id}", response_model=List[dict])
+async def get_records_greater_than(increment_id: int):
+    """
+    Retrieve records with an incremental ID greater than the specified value.
+    """
+    try:
+        files = sorted(Path(DATA_FOLDER).glob("*.json"), key=os.path.getmtime)
+        records = []
+        for file in files:
+            try:
+                file_increment_id = int(file.stem.split("_")[2])
+            except (IndexError, ValueError) as e:
+                logger.error(
+                    f"Error parsing increment_id from file name {file.name}: {e}"
+                )
+                continue
+            if file_increment_id > increment_id:
+                with open(file, "r") as f:
+                    record = json.load(f)
+                    records.append(record)
+        return records
+    except Exception as e:
+        logger.error(f"Error fetching records greater than {increment_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 
 if __name__ == "__main__":
