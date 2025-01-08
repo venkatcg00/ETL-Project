@@ -85,11 +85,6 @@ def save_highest_record_id(value):
         json.dump({"highest_record_id": value}, f)
 
 
-# Initialize incremental id and highest record id
-incremental_id = load_incremental_id()
-highest_record_id = load_highest_record_id()
-
-
 # Data model
 class Record(BaseModel):
     id: str  # Provided by the sender
@@ -133,8 +128,6 @@ async def add_record(request: Request):
     """
     Add a new record to the storage. Generates a unique incremental ID.
     """
-    global incremental_id, highest_record_id
-
     # Parse XML data from the request body
     try:
         body = await request.body()
@@ -148,10 +141,11 @@ async def add_record(request: Request):
     record = Record(id=record_id, data=record_data)
 
     # Update incremental ID
-    incremental_id += 1
+    incremental_id = load_incremental_id() + 1
     save_incremental_id(incremental_id)
 
     # Update highest_record_id
+    highest_record_id = load_highest_record_id()
     if highest_record_id is None or int(record.id) > int(highest_record_id):
         highest_record_id = record.id
         save_highest_record_id(highest_record_id)
@@ -207,6 +201,7 @@ async def get_highest_increment_id():
     """
     Return the current highest incremental ID.
     """
+    incremental_id = load_incremental_id()
     return {"highest_increment_id": incremental_id}
 
 
@@ -215,7 +210,7 @@ async def get_highest_record_id():
     """
     Return the highest record_id received so far.
     """
-    global highest_record_id
+    highest_record_id = load_highest_record_id()
     if highest_record_id is None:
         return {"highest_record_id": "0"}
     return {"highest_record_id": highest_record_id}

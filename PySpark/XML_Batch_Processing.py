@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from datetime import datetime
+from datetime import datetime, timedelta
 from pyspark.sql.functions import (
     md5,
     concat_ws,
@@ -10,15 +10,20 @@ from pyspark.sql.functions import (
     to_timestamp,
     udf,
     coalesce,
-    row_number,
     upper,
-    floor,
+    row_number,
 )
 from pyspark.sql.window import Window
+import xml.etree.ElementTree as ET
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, update
+from sqlalchemy import create_engine, MetaData, update, text
 from sqlalchemy.orm import sessionmaker
-from pyspark.sql.types import StructType, StructField, IntegerType, StringType
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    IntegerType,
+    StringType,
+)
 from DB_Lookup import (
     connect_to_database,
     return_lookup_value,
@@ -27,17 +32,76 @@ from DB_Lookup import (
 import os
 import configparser
 import sys
+import logging
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from Setup.NO_SQL_DB_Setup import query_by_id
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Create a custom logger
+logger = logging.getLogger(__name__)
+
+def get_agent_id(agent_name, db_path):
+    if agent_name is None:
+        return None
+    
+    agent_name = f"'{agent_name}'"
+    logger.debug(f"Looking up AGENT_ID for AGENT_CODE: {agent_name}")
+    
+    try:
+        engine, Session = connect_to_database(db_path)
+        agent_id = return_lookup_value(
+            Session, "CSD_AGENTS", "'UBER'", "AGENT_ID", agent_name, "PSEUDO_CODE"
+        )
+        close_database_connection(engine)
+        logger.debug(f"Agent ID for {agent_name}: {agent_id}")
+        return agent_id
+    except Exception as e:
+        logger.error(f"Error getting agent ID for {agent_name}: {e}")
+        return None
+
+def get_support_area_id(support_area, db_path):
+    if support_area is None:
+        return None
+    
+    support_area = f"'{support_area}'"
+    logger.debug(f"Looking up SUPPORT_AREA_ID for SUPPORT_AREA_NAME: {support_area}")
+    
+    try:
+        engine, Session = connect_to_database(db_path)
+        support_area_id = return_lookup_value(
+            Session, "CSD_SUPPORT_AREAS", "'UBER'", "SUPPORT_AREA_ID", support_area, "SUPPORT_AREA_NAME"
+        )
+        close_database_connection(engine)
+        logger.debug(f"Support Area ID for {support_area}: {support_area_id}")
+        return support_area_id
+    except Exception as e:
+        logger.error(f"Error getting support area ID for {support_area}: {e}")
+        return None
+
+def get_customer_type_id(customer_type, db_path):
+    if customer_type is None:
+        return None
+    
+    customer_type = f"'{customer_type}'"
+    logger.debug(f"Looking up CUSTOMER_TYPE_ID for CUSTOMER_TYPE_NAME: {customer_type}")
+    
+    try:
+        engine, Session = connect_to_database(db_path)
+        customer_type_id = return_lookup_value(
+            Session, "CSD_CUSTOMER_TYPES", "'UBER'", "CUSTOMER_TYPE_ID", customer_type, "CUSTOMER_TYPE_NAME"
+        )
+        close_database_connection(engine)
+        logger.debug(f"Customer Type ID for {customer_type}: {customer_type_id}")
+        return customer_type_id
+    except Exception as e:
+        logger.error(f"Error getting customer type ID for {customer_type}: {e}")
+        return None
 
 def database_df_maker(db_path, source_id, spark):
     engine = create_engine(f"sqlite:///{db_path}")
     query = f"SELECT CSD_ID AS HISTORIC_CSD_ID, SOURCE_SYSTEM_IDENTIFIER AS HISTORIC_SSI, SOURCE_HASH_KEY AS HISTORIC_HASHKEY FROM CSD_DATA_MART WHERE ACTIVE_FLAG = 1 AND SOURCE_ID = {source_id}"
     pandas_df = pd.read_sql(query, con=engine)
     if pandas_df.empty:
-        # Define the schema for the empty DataFrame
         schema = StructType(
             [
                 StructField("HISTORIC_CSD_ID", IntegerType(), True),
@@ -50,113 +114,88 @@ def database_df_maker(db_path, source_id, spark):
         return spark.createDataFrame(pandas_df)
 
 
-def json_df_maker(json_data, spark):
-    value_schema = StructType(
-        [
-            StructField("INTERACTION_ID", IntegerType(), True),
-            StructField("SUPPORT_CATEGORY", StringType(), True),
-            StructField("AGENT_PSEUDO_NAME", StringType(), True),
-            StructField("CONTACT_DATE", StringType(), True),
-            StructField("INTERACTION_STATUS", StringType(), True),
-            StructField("INTERACTION_TYPE", StringType(), True),
-            StructField("TYPE_OF_CUSTOMER", StringType(), True),
-            StructField("INTERACTION_DURATION", IntegerType(), True),
-            StructField("TOTAL_TIME", IntegerType(), True),
-            StructField("STATUS_OF_CUSTOMER_INCIDENT", StringType(), True),
-            StructField("RESOLVED_IN_FIRST_CONTACT", StringType(), True),
-            StructField("SOLUTION_TYPE", StringType(), True),
-            StructField("RATING", IntegerType(), True),
-        ]
-    )
+def duration_to_seconds(duration):
+    if duration is None:
+        return None
+    else:
+        parts = duration.split(":")
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
 
+
+duration_to_seconds_udf = udf(duration_to_seconds, IntegerType())
+
+
+def xml_df_maker(xml_data, spark):
     schema = StructType(
         [
-            StructField("key", IntegerType(), True),
-            StructField("value", value_schema, True),
+            StructField("SUPPORT_IDENTIFIER", StringType(), True),
+            StructField("CONTACT_REGARDING", StringType(), True),
+            StructField("AGENT_CODE", StringType(), True),
+            StructField("DATE_OF_INTERACTION", StringType(), True),
+            StructField("STATUS_OF_INTERACTION", StringType(), True),
+            StructField("TYPE_OF_INTERACTION", StringType(), True),
+            StructField("CUSTOMER_TYPE", StringType(), True),
+            StructField("CONTACT_DURATION", StringType(), True),
+            StructField("AFTER_CONTACT_WORK_TIME", StringType(), True),
+            StructField("INCIDENT_STATUS", StringType(), True),
+            StructField("FIRST_CONTACT_SOLVE", StringType(), True),
+            StructField("TYPE_OF_RESOLUTION", StringType(), True),
+            StructField("SUPPORT_RATING", StringType(), True),
+            StructField("TIME_STAMP", StringType(), True),
         ]
     )
 
-    df = spark.createDataFrame(json_data, schema)
-    value_df = df.select("value.*")
+    records = []
+    for record in xml_data:
+        root = ET.fromstring(record[0])
+        record_dict = {child.tag: child.text for child in root}
+        records.append(record_dict)
 
-    value_df = value_df.withColumn(
-        "CONTACT_DATE", to_timestamp(col("CONTACT_DATE"), "dd/MM/yyyy HH:mm:ss")
+    spark_df = spark.createDataFrame(records, schema)
+
+    spark_df = spark_df.withColumn(
+        "DATE_OF_INTERACTION",
+        to_timestamp(col("DATE_OF_INTERACTION"), "yyyyMMddHHmmss"),
     )
 
-    # Window specification to get the latest record for each INTERACTION_ID based on the highest value
-    window_spec = Window.partitionBy("INTERACTION_ID").orderBy(
-        col("INTERACTION_ID").desc()
+    spark_df = spark_df.withColumn(
+        "CONTACT_DURATION", duration_to_seconds_udf(col("CONTACT_DURATION"))
+    )
+    spark_df = spark_df.withColumn(
+        "AFTER_CONTACT_WORK_TIME",
+        duration_to_seconds_udf(col("AFTER_CONTACT_WORK_TIME")),
+    )
+
+    # Window specification to get the latest record for each SUPPORT_IDENTIFIER based on the highest value
+    window_spec = Window.partitionBy("SUPPORT_IDENTIFIER").orderBy(
+        col("SUPPORT_IDENTIFIER").desc()
     )
 
     # Add row number to each record within the partition
-    value_df = value_df.withColumn("row_num", row_number().over(window_spec))
+    df_final = spark_df.withColumn("row_num", row_number().over(window_spec))
 
-    # Filter to get only the latest record for each INTERACTION_ID
-    value_df = value_df.filter(col("row_num") == 1).drop("row_num")
+    # Filter to get only the latest record for each TICKET_IDENTIFIER
+    df_final = df_final.filter(col("row_num") == 1).drop("row_num")
 
-    # Calculate HASHKEY with null values replaced by "NULL"
-    value_df = value_df.withColumn(
+    df_final = df_final.withColumn(
         "HASHKEY",
         md5(
-            concat_ws("||", *[coalesce(col(c), lit("NULL")) for c in value_df.columns])
+            concat_ws("||", *[coalesce(col(c), lit("NULL")) for c in df_final.columns])
         ),
     )
 
-    value_df = value_df.withColumn(
-        "INTERACTION_ID", concat(lit("AMAZON - "), col("INTERACTION_ID"))
+    df_final = df_final.withColumn(
+        "SUPPORT_IDENTIFIER", concat(lit("UBER - "), col("SUPPORT_IDENTIFIER"))
     )
 
-    return value_df
+    # Order by the first column (SUPPORT_IDENTIFIER)
+    df_final = df_final.orderBy("SUPPORT_IDENTIFIER")
+
+    return df_final
 
 
-def get_agent_id(agent_name, db_path):
-    if agent_name is None:
-        return None
-    agent_name = f"'{agent_name}'"
-    engine, Session = connect_to_database(db_path)
-    agent_id = return_lookup_value(
-        Session, "CSD_AGENTS", "'AMAZON'", "AGENT_ID", agent_name, "PSEUDO_CODE"
-    )
-    close_database_connection(engine)
-    return agent_id
 
-
-def get_support_area_id(support_area, db_path):
-    if support_area is None:
-        return None
-    support_area = f"'{support_area}'"
-    engine, Session = connect_to_database(db_path)
-    support_area_id = return_lookup_value(
-        Session,
-        "CSD_SUPPORT_AREAS",
-        "'AMAZON'",
-        "SUPPORT_AREA_ID",
-        support_area,
-        "SUPPORT_AREA_NAME",
-    )
-    close_database_connection(engine)
-    return support_area_id
-
-
-def get_customer_type_id(customer_type, db_path):
-    if customer_type is None:
-        return None
-    customer_type = f"'{customer_type}'"
-    engine, Session = connect_to_database(db_path)
-    customer_type_id = return_lookup_value(
-        Session,
-        "CSD_CUSTOMER_TYPES",
-        "'AMAZON'",
-        "CUSTOMER_TYPE_ID",
-        customer_type,
-        "CUSTOMER_TYPE_NAME",
-    )
-    close_database_connection(engine)
-    return customer_type_id
-
-
-def data_transformer(database_df, json_df, db_path, source_id, data_load_id):
-    # Register Udfs
+def data_transformer(database_df, xml_df, db_path, source_id, data_load_id):
     get_agent_id_udf = udf(
         lambda agent_name: get_agent_id(agent_name, db_path), StringType()
     )
@@ -167,46 +206,46 @@ def data_transformer(database_df, json_df, db_path, source_id, data_load_id):
         lambda support_area: get_support_area_id(support_area, db_path), StringType()
     )
 
-    # Join the CSV data with the existing database data
-    df = json_df.join(
+    df = xml_df.join(
         database_df,
-        json_df["INTERACTION_ID"] == database_df["HISTORIC_SSI"],
+        xml_df["SUPPORT_IDENTIFIER"] == database_df["HISTORIC_SSI"],
         "left",
     )
 
-    # Determine the router group
     router_df = df.withColumn(
         "ROUTER_GROUP",
-        when(col("HISTORIC_SSI").isNull(), "INSERT")
+        when(col("HISTORIC_HASHKEY").isNull(), "INSERT")
         .when(col("HASHKEY") == col("HISTORIC_HASHKEY"), "DUPLICATE")
         .otherwise("UPDATE"),
     )
 
-    filter_df = router_df.filter(col("ROUTER_GROUP") != "DUPLICATE")
+    router_df.show(truncate=False)
 
-    # Correct timestamp parsing
+    filter_df = router_df.filter(col("ROUTER_GROUP") != "DUPLICATE")
+    
+
     transformed_df = (
         filter_df.withColumn("SOURCE_ID", lit(source_id))
-        .withColumn("SOURCE_SYSTEM_IDENTIFIER", col("INTERACTION_ID"))
-        .withColumn("AGENT_ID", get_agent_id_udf(col("AGENT_PSEUDO_NAME")))
-        .withColumn("INTERACTION_DATE", col("CONTACT_DATE"))
-        .withColumn("SUPPORT_AREA_ID", get_support_area_id_udf(col("SUPPORT_CATEGORY")))
-        .withColumn("INTERACTION_STATUS", col("INTERACTION_STATUS"))
-        .withColumn("INTERACTION_TYPE", col("INTERACTION_TYPE"))
+        .withColumn("SOURCE_SYSTEM_IDENTIFIER", col("SUPPORT_IDENTIFIER"))
+        .withColumn("AGENT_ID", get_agent_id_udf(col("AGENT_CODE")))
+        .withColumn("INTERACTION_DATE", col("DATE_OF_INTERACTION"))
         .withColumn(
-            "CUSTOMER_TYPE_ID", get_customer_type_id_udf(col("TYPE_OF_CUSTOMER"))
+            "SUPPORT_AREA_ID", get_support_area_id_udf(col("CONTACT_REGARDING"))
         )
-        .withColumn("HANDLE_TIME", col("INTERACTION_DURATION"))
-        .withColumn("WORK_TIME", (col("TOTAL_TIME") - col("INTERACTION_DURATION")))
+        .withColumn("INTERACTION_STATUS", col("STATUS_OF_INTERACTION"))
+        .withColumn("INTERACTION_TYPE", col("TYPE_OF_INTERACTION"))
+        .withColumn("CUSTOMER_TYPE_ID", get_customer_type_id_udf(col("CUSTOMER_TYPE")))
+        .withColumn("HANDLE_TIME", col("CONTACT_DURATION").cast(IntegerType()))
+        .withColumn("WORK_TIME", col("AFTER_CONTACT_WORK_TIME").cast(IntegerType()))
         .withColumn(
             "FIRST_CONTACT_RESOLUTION",
-            when(upper(col("RESOLVED_IN_FIRST_CONTACT")) == lit("YES"), 1)
-            .when(upper(col("RESOLVED_IN_FIRST_CONTACT")) == lit("NO"), 0)
+            when(upper(col("FIRST_CONTACT_SOLVE")) == lit("TRUE"), 1)
+            .when(upper(col("FIRST_CONTACT_SOLVE")) == lit("FALSE"), 0)
             .otherwise(None),
         )
-        .withColumn("QUERY_STATUS", col("STATUS_OF_CUSTOMER_INCIDENT"))
-        .withColumn("SOLUTION_TYPE", col("SOLUTION_TYPE"))
-        .withColumn("CUSTOMER_RATING", floor(col("RATING").cast("int") / 2))
+        .withColumn("QUERY_STATUS", col("INCIDENT_STATUS"))
+        .withColumn("SOLUTION_TYPE", col("TYPE_OF_RESOLUTION"))
+        .withColumn("CUSTOMER_RATING", col("SUPPORT_RATING"))
         .withColumn("SOURCE_HASH_KEY", col("HASHKEY"))
         .withColumn("ROUTER_GROUP", col("ROUTER_GROUP"))
         .withColumn("HISTORIC_CSD_ID", col("HISTORIC_CSD_ID"))
@@ -215,7 +254,6 @@ def data_transformer(database_df, json_df, db_path, source_id, data_load_id):
         .withColumn("END_DATE", lit(datetime.strptime("2099-12-31", "%Y-%m-%d")))
     )
 
-    # Add IS_VALID_DATA column
     valid_record_check_df = transformed_df.withColumn(
         "IS_VALID_DATA",
         when(
@@ -235,7 +273,6 @@ def data_transformer(database_df, json_df, db_path, source_id, data_load_id):
         ).otherwise(1),
     )
 
-    # Select and reorder the columns
     final_output_df = valid_record_check_df.select(
         "SOURCE_ID",
         "SOURCE_SYSTEM_IDENTIFIER",
@@ -260,6 +297,8 @@ def data_transformer(database_df, json_df, db_path, source_id, data_load_id):
         "END_DATE",
     )
 
+    final_output_df.show(truncate=False)
+
     return final_output_df
 
 
@@ -271,7 +310,6 @@ def upsert_table(dataframe, db_path):
     metadata.reflect(bind=engine)
     table = metadata.tables["CSD_DATA_MART"]
 
-    # Convert the DataFrame to Pandas DataFrame for easier manipulation with SQLAlchemy
     pandas_df = dataframe.toPandas()
 
     total_upsert_count = 0
@@ -281,7 +319,6 @@ def upsert_table(dataframe, db_path):
     for index, row in pandas_df.iterrows():
         row_dict = row.to_dict()
 
-        # Convert datetime to string if not NaT, otherwise set to None
         row_dict["INTERACTION_DATE"] = (
             row_dict["INTERACTION_DATE"].strftime("%Y-%m-%d %H:%M:%S")
             if pd.notna(row_dict["INTERACTION_DATE"])
@@ -298,7 +335,6 @@ def upsert_table(dataframe, db_path):
             else None
         )
 
-        # Map DataFrame columns to table columns
         mapped_row = {
             "SOURCE_SYSTEM_IDENTIFIER": row_dict.get("SOURCE_SYSTEM_IDENTIFIER"),
             "SOURCE_HASH_KEY": row_dict.get("SOURCE_HASH_KEY"),
@@ -323,12 +359,10 @@ def upsert_table(dataframe, db_path):
         }
 
         if row["ROUTER_GROUP"] == "INSERT":
-            # Insert the new record
             insert_stmt = table.insert().values(**mapped_row)
             session.execute(insert_stmt)
             total_upsert_count += 1
         elif row["ROUTER_GROUP"] == "UPDATE":
-            # Deactivate the old record (only if it is active)
             deactivate_stmt = (
                 update(table)
                 .where(
@@ -337,7 +371,6 @@ def upsert_table(dataframe, db_path):
                 .values(ACTIVE_FLAG=0, END_DATE=row_dict.get("START_DATE"))
             )
             session.execute(deactivate_stmt)
-            # Insert the new record
             insert_stmt = table.insert().values(**mapped_row)
             session.execute(insert_stmt)
             total_upsert_count += 1
@@ -354,16 +387,10 @@ def upsert_table(dataframe, db_path):
 
 
 def main(record_id, data_load_id):
-    # Get the directory where the current Python script is located
     current_directory = os.path.dirname(os.path.abspath(__file__))
-
-    # Navigate to the parent directory
     project_directory = os.path.dirname(current_directory)
-
-    # Construct the path to the parameter file
     parameter_file_path = os.path.join(project_directory, "Setup", "Parameters.ini")
 
-    # Read the parameter file
     config = configparser.ConfigParser()
     config.read(parameter_file_path)
 
@@ -371,12 +398,12 @@ def main(record_id, data_load_id):
         f"{config.get('PATH', 'SQL_DB_PATH')}/{config.get('DATABASE', 'SQL_DB_NAME')}"
     )
 
-    spark = SparkSession.builder.appName("CSV Batch Processing").getOrCreate()
+    spark = SparkSession.builder.appName("XML Batch Processing").getOrCreate()
 
-    engine, sessionmaker = connect_to_database(db_path)
+    engine, Session = connect_to_database(db_path)
 
     source_id = return_lookup_value(
-        sessionmaker, "CSD_SOURCES", "'AMAZON'", "SOURCE_ID", "'AMAZON'", "SOURCE_NAME"
+        Session, "CSD_SOURCES", "'UBER'", "SOURCE_ID", "'UBER'", "SOURCE_NAME"
     )
 
     if source_id is None:
@@ -386,25 +413,41 @@ def main(record_id, data_load_id):
     close_database_connection(engine)
 
     historic_df = database_df_maker(db_path, source_id, spark)
-    json_data = query_by_id(int(record_id), "gt")
-    new_df = json_df_maker(json_data, spark)
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    query = text(
+        f"SELECT STREAMING_DATA FROM STREAMING_DATA_ARCHIVE A WHERE A.STREAM_RECORD_ID > {record_id} AND A.ARCHIVE_ID = (SELECT MAX(B.ARCHIVE_ID) FROM STREAMING_DATA_ARCHIVE B WHERE A.STREAM_RECORD_ID = B.STREAM_RECORD_ID)"
+    )
+
+    session = sessionmaker(bind=engine)
+    with session() as s:
+        result = s.execute(query)
+        records = result.fetchall()
+
+    if len(records) == 0:
+        print("Error: No new records found. Exiting the script.")
+        return {
+            "TOTAL_UPSERT_COUNT": 0,
+            "VALID_COUNT": 0,
+            "INVALID_COUNT": 0,
+            "DATA_VALID_PERCENTAGE": 0,
+        }
+    else:
+        xml_data = records
+
+    new_df = xml_df_maker(xml_data, spark)
     transformed_df = data_transformer(
         historic_df, new_df, db_path, source_id, data_load_id
     )
 
-    # transformed_df.show(50)
-
-    # Upsert the transformed data into the database table
     total_upsert_count, valid_count, invalid_count = upsert_table(
         transformed_df, db_path
     )
 
-    # Calculate data valid percentage
     data_valid_percentage = (
         (valid_count / total_upsert_count) * 100 if total_upsert_count > 0 else 0
     )
 
-    # Return the counts and percentage
     return {
         "TOTAL_UPSERT_COUNT": total_upsert_count,
         "VALID_COUNT": valid_count,
@@ -414,9 +457,8 @@ def main(record_id, data_load_id):
 
 
 if __name__ == "__main__":
-    # For debugging purposes, you can provide the record id and data_load_id as arguments
     if len(sys.argv) != 3:
-        print("Usage: python CSV_Batch_Processing.py <record_id> <data_load_id>")
+        print("Usage: python XML_Batch_Processing.py <record_id> <data_load_id>")
         sys.exit(1)
 
     record_id = sys.argv[1]

@@ -11,7 +11,6 @@ from pyspark.sql.functions import (
     udf,
     coalesce,
     row_number,
-    monotonically_increasing_id,
 )
 from pyspark.sql.window import Window
 import pandas as pd
@@ -66,13 +65,9 @@ def csv_df_maker(file_path: str, spark):
     )
 
     df = spark.read.csv(file_path, header=True, schema=csv_schema, sep="|")
-
-    # Add a row_index column
-    df = df.withColumn("row_index", monotonically_increasing_id())
-
-    # Window specification to get the latest record for each TICKET_IDENTIFIER based on the highest row_index
+    # Window specification to get the latest record for each TICKET_IDENTIFIER based on the highest value
     window_spec = Window.partitionBy("TICKET_IDENTIFIER").orderBy(
-        col("row_index").desc()
+        col("TICKET_IDENTIFIER").desc()
     )
 
     # Add row number to each record within the partition
@@ -89,6 +84,7 @@ def csv_df_maker(file_path: str, spark):
     df = df.withColumn(
         "TICKET_IDENTIFIER", concat(lit("AT&T - "), col("TICKET_IDENTIFIER"))
     )
+
     return df
 
 
@@ -97,9 +93,8 @@ def get_agent_id(agent_name, db_path):
         return None
     agent_name = f"'{agent_name}'"
     engine, Session = connect_to_database(db_path)
-    session = Session()
     agent_id = return_lookup_value(
-        session, "CSD_AGENTS", "'AT&T'", "AGENT_ID", agent_name, "PSEUDO_CODE"
+        Session, "CSD_AGENTS", "'AT&T'", "AGENT_ID", agent_name, "PSEUDO_CODE"
     )
     close_database_connection(engine)
     return agent_id
@@ -110,9 +105,8 @@ def get_support_area_id(support_area, db_path):
         return None
     support_area = f"'{support_area}'"
     engine, Session = connect_to_database(db_path)
-    session = Session()
     support_area_id = return_lookup_value(
-        session,
+        Session,
         "CSD_SUPPORT_AREAS",
         "'AT&T'",
         "SUPPORT_AREA_ID",
@@ -128,9 +122,8 @@ def get_customer_type_id(customer_type, db_path):
         return None
     customer_type = f"'{customer_type}'"
     engine, Session = connect_to_database(db_path)
-    session = Session()
     customer_type_id = return_lookup_value(
-        session,
+        Session,
         "CSD_CUSTOMER_TYPES",
         "'AT&T'",
         "CUSTOMER_TYPE_ID",
@@ -155,15 +148,13 @@ def data_transformer(database_df, csv_df, db_path, source_id, data_load_id):
 
     # Join the CSV data with the existing database data
     df = csv_df.join(
-        database_df,
-        csv_df["TICKET_IDENTIFIER"] == database_df["HISTORIC_SSI"],
-        "left",
+        database_df, csv_df["TICKET_IDENTIFIER"] == database_df["HISTORIC_SSI"], "left"
     )
 
     # Determine the router group
     router_df = df.withColumn(
         "ROUTER_GROUP",
-        when(col("HISTORIC_HASHKEY").isNull(), "INSERT")
+        when(col("HISTORIC_SSI").isNull(), "INSERT")
         .when(col("HASHKEY") == col("HISTORIC_HASHKEY"), "DUPLICATE")
         .otherwise("UPDATE"),
     )
