@@ -32,70 +32,51 @@ from DB_Lookup import (
 import os
 import configparser
 import sys
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Create a custom logger
-logger = logging.getLogger(__name__)
 
 def get_agent_id(agent_name, db_path):
     if agent_name is None:
         return None
-    
     agent_name = f"'{agent_name}'"
-    logger.debug(f"Looking up AGENT_ID for AGENT_CODE: {agent_name}")
-    
-    try:
-        engine, Session = connect_to_database(db_path)
-        agent_id = return_lookup_value(
-            Session, "CSD_AGENTS", "'UBER'", "AGENT_ID", agent_name, "PSEUDO_CODE"
-        )
-        close_database_connection(engine)
-        logger.debug(f"Agent ID for {agent_name}: {agent_id}")
-        return agent_id
-    except Exception as e:
-        logger.error(f"Error getting agent ID for {agent_name}: {e}")
-        return None
+    engine, Session = connect_to_database(db_path)
+    agent_id = return_lookup_value(
+        Session, "CSD_AGENTS", "'AT&T'", "AGENT_ID", agent_name, "PSEUDO_CODE"
+    )
+    close_database_connection(engine)
+    return agent_id
+
 
 def get_support_area_id(support_area, db_path):
     if support_area is None:
         return None
-    
     support_area = f"'{support_area}'"
-    logger.debug(f"Looking up SUPPORT_AREA_ID for SUPPORT_AREA_NAME: {support_area}")
-    
-    try:
-        engine, Session = connect_to_database(db_path)
-        support_area_id = return_lookup_value(
-            Session, "CSD_SUPPORT_AREAS", "'UBER'", "SUPPORT_AREA_ID", support_area, "SUPPORT_AREA_NAME"
-        )
-        close_database_connection(engine)
-        logger.debug(f"Support Area ID for {support_area}: {support_area_id}")
-        return support_area_id
-    except Exception as e:
-        logger.error(f"Error getting support area ID for {support_area}: {e}")
-        return None
+    engine, Session = connect_to_database(db_path)
+    support_area_id = return_lookup_value(
+        Session,
+        "CSD_SUPPORT_AREAS",
+        "'AT&T'",
+        "SUPPORT_AREA_ID",
+        support_area,
+        "SUPPORT_AREA_NAME",
+    )
+    close_database_connection(engine)
+    return support_area_id
+
 
 def get_customer_type_id(customer_type, db_path):
     if customer_type is None:
         return None
-    
     customer_type = f"'{customer_type}'"
-    logger.debug(f"Looking up CUSTOMER_TYPE_ID for CUSTOMER_TYPE_NAME: {customer_type}")
-    
-    try:
-        engine, Session = connect_to_database(db_path)
-        customer_type_id = return_lookup_value(
-            Session, "CSD_CUSTOMER_TYPES", "'UBER'", "CUSTOMER_TYPE_ID", customer_type, "CUSTOMER_TYPE_NAME"
-        )
-        close_database_connection(engine)
-        logger.debug(f"Customer Type ID for {customer_type}: {customer_type_id}")
-        return customer_type_id
-    except Exception as e:
-        logger.error(f"Error getting customer type ID for {customer_type}: {e}")
-        return None
+    engine, Session = connect_to_database(db_path)
+    customer_type_id = return_lookup_value(
+        Session,
+        "CSD_CUSTOMER_TYPES",
+        "'AT&T'",
+        "CUSTOMER_TYPE_ID",
+        customer_type,
+        "CUSTOMER_TYPE_NAME",
+    )
+    close_database_connection(engine)
+    return customer_type_id
 
 def database_df_maker(db_path, source_id, spark):
     engine = create_engine(f"sqlite:///{db_path}")
