@@ -27,8 +27,8 @@ config.set("PATH", "XML_STORAGE", repo_path + "Data/Untracked/XML_STORAGE")
 
 # Add a new section for database details
 config.add_section("DATABASE")
-config.set("DATABASE", "SQL_DB_NAME", "SQL_DATABASE")
-config.set("DATABASE", "NO_SQL_DB_NAME", "NO_SQL_DATABASE")
+config.set("DATABASE", "SQL_DB_NAME", "SQL_DATABASE.db")
+config.set("DATABASE", "NO_SQL_DB_NAME", "NO_SQL_DATABASE.db")
 
 # Add a new section for API details
 config.add_section("API")

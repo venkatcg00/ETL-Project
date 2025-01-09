@@ -39,7 +39,7 @@ def get_agent_id(agent_name, db_path):
     agent_name = f"'{agent_name}'"
     engine, Session = connect_to_database(db_path)
     agent_id = return_lookup_value(
-        Session, "CSD_AGENTS", "'AT&T'", "AGENT_ID", agent_name, "PSEUDO_CODE"
+        Session, "CSD_AGENTS", "'UBER'", "AGENT_ID", agent_name, "PSEUDO_CODE"
     )
     close_database_connection(engine)
     return agent_id
@@ -53,7 +53,7 @@ def get_support_area_id(support_area, db_path):
     support_area_id = return_lookup_value(
         Session,
         "CSD_SUPPORT_AREAS",
-        "'AT&T'",
+        "'UBER'",
         "SUPPORT_AREA_ID",
         support_area,
         "SUPPORT_AREA_NAME",
@@ -70,7 +70,7 @@ def get_customer_type_id(customer_type, db_path):
     customer_type_id = return_lookup_value(
         Session,
         "CSD_CUSTOMER_TYPES",
-        "'AT&T'",
+        "'UBER'",
         "CUSTOMER_TYPE_ID",
         customer_type,
         "CUSTOMER_TYPE_NAME",
@@ -200,8 +200,6 @@ def data_transformer(database_df, xml_df, db_path, source_id, data_load_id):
         .otherwise("UPDATE"),
     )
 
-    router_df.show(truncate=False)
-
     filter_df = router_df.filter(col("ROUTER_GROUP") != "DUPLICATE")
     
 
@@ -277,8 +275,6 @@ def data_transformer(database_df, xml_df, db_path, source_id, data_load_id):
         "START_DATE",
         "END_DATE",
     )
-
-    final_output_df.show(truncate=False)
 
     return final_output_df
 

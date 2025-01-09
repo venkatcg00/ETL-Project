@@ -1,7 +1,7 @@
 # Untracked Project Files
 Parameters.ini
-SQL_DATABASE
-NO_SQL_DATABASE
+SQL_DATABASE*
+NO_SQL_DATABASE*
 CSV_data*.csv
 XML_STORAGE
 incremental_id.json

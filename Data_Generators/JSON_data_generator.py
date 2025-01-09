@@ -149,13 +149,13 @@ def main() -> None:
 
     # Fetch allowed values from the database
     support_categories: List[str] = fetch_allowed_values(
-        sessionmaker, "CSD_SUPPORT_AREAS", "'AT&T'", "SUPPORT_AREA_NAME"
+        sessionmaker, "CSD_SUPPORT_AREAS", "'AMAZON'", "SUPPORT_AREA_NAME"
     )
     agent_pseudo_names: List[str] = fetch_allowed_values(
-        sessionmaker, "CSD_AGENTS", "'AT&T'", "PSEUDO_CODE"
+        sessionmaker, "CSD_AGENTS", "'AMAZON'", "PSEUDO_CODE"
     )
     customer_types: List[str] = fetch_allowed_values(
-        sessionmaker, "CSD_CUSTOMER_TYPES", "'AT&T'", "CUSTOMER_TYPE_NAME"
+        sessionmaker, "CSD_CUSTOMER_TYPES", "'AMAZON'", "CUSTOMER_TYPE_NAME"
     )
 
     # Close the database connection

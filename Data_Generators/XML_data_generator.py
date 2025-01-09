@@ -45,16 +45,17 @@ def upload_record_to_API(api_link, xml_data):
     api_link (str): The API link to post the record.
     xml_data (ET.Element): The XML data to be sent.
     """
-    # Serialize the XML data to a string
-    xml_string = ET.tostring(xml_data, encoding="unicode")
+    try:
+        # Serialize the XML data to a string
+        xml_string = ET.tostring(xml_data, encoding="unicode")
 
-    # Send the XML data to the API
-    response = requests.post(
-        api_link, data=xml_string, headers={"Content-Type": "application/xml"}
-    )
-
-    # Print the response
-    print(response.json())
+        # Send the XML data to the API
+        response = requests.post(
+            api_link, data=xml_string, headers={"Content-Type": "application/xml"}
+        )
+        response.raise_for_status()  # Raise an error for HTTP codes 4xx/5xx
+    except requests.exceptions.RequestException as e:
+        print(f"Error uploading record to API: {e}")
 
 
 def generate_random_record(
@@ -211,13 +212,13 @@ def main() -> None:
 
     # Fetch allowed values from the database
     support_categories: List[str] = fetch_allowed_values(
-        sessionmaker, "CSD_SUPPORT_AREAS", "'AT&T'", "SUPPORT_AREA_NAME"
+        sessionmaker, "CSD_SUPPORT_AREAS", "'UBER'", "SUPPORT_AREA_NAME"
     )
     agent_pseudo_names: List[str] = fetch_allowed_values(
-        sessionmaker, "CSD_AGENTS", "'AT&T'", "PSEUDO_CODE"
+        sessionmaker, "CSD_AGENTS", "'UBER'", "PSEUDO_CODE"
     )
     customer_types: List[str] = fetch_allowed_values(
-        sessionmaker, "CSD_CUSTOMER_TYPES", "'AT&T'", "CUSTOMER_TYPE_NAME"
+        sessionmaker, "CSD_CUSTOMER_TYPES", "'UBER'", "CUSTOMER_TYPE_NAME"
     )
 
     # Close the database connection
