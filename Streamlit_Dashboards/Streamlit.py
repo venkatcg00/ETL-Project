@@ -1,31 +1,43 @@
 import streamlit as st
 import plotly.express as px
-import sqlite3
-import pandas as pd
+import plotly.graph_objects as go
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from Data_Information_tab import data_information
 import os
 import configparser
 
-def connect_to_db(db_path):
-    conn = sqlite3.connect(db_path)
-    return conn
+current_directory = os.path.dirname(os.path.abspath(__file__))
+project_directory = os.path.dirname(current_directory)
+parameter_file_path = os.path.join(project_directory, "Setup", "Parameters.ini")
 
-def fetch_data(conn, query):
-    return pd.read_sql_query(query, conn)
+config = configparser.ConfigParser()
+config.read(parameter_file_path)
 
-def main():
-    current_directory = os.path.dirname(os.path.abspath(__file__))
-    project_directory = os.path.dirname(current_directory)
-    parameter_file_path = os.path.join(project_directory, "Setup", "Parameters.ini")
+db_path = f"{config.get('PATH', 'SQL_DB_PATH')}/{config.get('DATABASE', 'SQL_DB_NAME')}"
 
-    config = configparser.ConfigParser()
-    config.read(parameter_file_path)
+engine = create_engine(f"sqlite:///{db_path}")
+Session = sessionmaker(bind=engine)
+session = Session()
 
-    db_path = (
-        f"{config.get('PATH', 'SQL_DB_PATH')}/{config.get('DATABASE', 'SQL_DB_NAME')}"
-    )
-    st.title("Data Analysis Dashboard")
+# Setup the app title
+st.set_page_config(page_title="Call Center Analytics Dashboard", layout="wide")
 
-    # Connect to the database
-    if db_path:
-        conn = connect_to_db(db_path)
-        table = 'CSD_DATA_MART'
+# Main Header
+st.title("Call Center Analytics Dashboard")
+
+# Create Tabs
+tabs = st.tabs(["Data Info", "Amazon", "Uber", "AT&T"])
+
+with tabs[0]:
+    st.header("Data Information")
+    data_information(session=session, st=st, px=px, go=go)
+
+with tabs[1]:
+    st.header("Analytics for Amazon Data")
+
+with tabs[2]:
+    st.header("Analytics for Uber Data")
+
+with tabs[3]:
+    st.header("Analytics for AT&T Data")

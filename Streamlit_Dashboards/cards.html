@@ -1,0 +1,77 @@
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+    body {
+        font-family: 'Roboto', sans-serif;
+    }
+
+    .card-container {
+        display: flex;
+        flex-direction: column;
+        margin-top: 20px;
+    }
+    .card-row {
+        display: flex;
+        justify-content: space-around;
+        margin-bottom: 20px;
+    }
+    .card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        margin: 10px;
+        flex: 1;
+        border: 1px solid #e0e0e0;
+        transition: transform 0.2s;
+    }
+    .card:hover {
+        transform: scale(1.05);
+    }
+    .card h3 {
+        margin: 0;
+        font-size: 1.2em;
+        color: #333;
+    }
+    .card p {
+        margin: 10px 0 0;
+        font-size: 1.5em;
+        color: #666;
+    }
+</style>
+
+<div class="card-container">
+    <div class="card-row">
+        <div class="card" style="flex: 1;">
+            <h3>Total Records</h3>
+            <p>{{ total_records }}</p>
+        </div>
+    </div>
+    <div class="card-row">
+        <div class="card" style="flex: 1;">
+            <h3>Selected Source</h3>
+            <p>{{ selected_source }}</p>
+        </div>
+    </div>
+    <div class="card-row">
+        <div class="card">
+            <h3>Valid Records</h3>
+            <p>{{ valid_records }}</p>
+        </div>
+        <div class="card">
+            <h3>Invalid Records</h3>
+            <p>{{ invalid_records }}</p>
+        </div>
+    </div>
+    <div class="card-row">
+        <div class="card">
+            <h3>Valid Percentage</h3>
+            <p>{{ valid_percentage }}%</p>
+        </div>
+        <div class="card">
+            <h3>Records</h3>
+            <p>{{ records }}</p>
+        </div>
+    </div>
+</div>

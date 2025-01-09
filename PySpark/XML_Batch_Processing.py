@@ -33,6 +33,7 @@ import os
 import configparser
 import sys
 
+
 def get_agent_id(agent_name, db_path):
     if agent_name is None:
         return None
@@ -77,6 +78,7 @@ def get_customer_type_id(customer_type, db_path):
     )
     close_database_connection(engine)
     return customer_type_id
+
 
 def database_df_maker(db_path, source_id, spark):
     engine = create_engine(f"sqlite:///{db_path}")
@@ -175,7 +177,6 @@ def xml_df_maker(xml_data, spark):
     return df_final
 
 
-
 def data_transformer(database_df, xml_df, db_path, source_id, data_load_id):
     get_agent_id_udf = udf(
         lambda agent_name: get_agent_id(agent_name, db_path), StringType()
@@ -201,7 +202,6 @@ def data_transformer(database_df, xml_df, db_path, source_id, data_load_id):
     )
 
     filter_df = router_df.filter(col("ROUTER_GROUP") != "DUPLICATE")
-    
 
     transformed_df = (
         filter_df.withColumn("SOURCE_ID", lit(source_id))
